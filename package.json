@@ -37,7 +37,7 @@
       }
     ],
     "win": {
-      "icon": "build/icon.ico",
+      "icon": "assets/icon.ico",
       "target": "nsis"
     },
     "nsis": {
