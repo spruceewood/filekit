@@ -32,7 +32,7 @@
     "publish": [
       {
         "provider": "github",
-        "owner": "jhoOrdann",
+        "owner": "spruceewood",
         "repo": "filekit"
       }
     ],
