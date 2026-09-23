@@ -127,11 +127,12 @@ async function handleDownloadRequest({
   const ffmpegPath = getFfmpegPath();
   const hasFfmpeg = !!ffmpegPath;
 
+  // SPOTIFY (SPOTDL)
   if (finalPlatform === 'spotify') {
     const spotdl = getSpotDlPath();
     let formatF = fileType && fileType !== 'auto' ? fileType : 'mp3';
 
-    let safeNameTemplate = '{title} - {artists}'; // Template padrão do spotdl
+    let safeNameTemplate = '{title} - {artists}';
     if (fileName && fileName.trim()) {
       safeNameTemplate = fileName.trim().replace(/[\\\/:*?"<>|]/g, '_');
     }
@@ -143,12 +144,12 @@ async function handleDownloadRequest({
 
     return new Promise((resolve, reject) => {
       const child = spawn(spotdl, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+      let spotErrorLog = '';
 
       const handleLine = (line) => {
         if (!line.trim()) return;
         if (mainWindow) {
           mainWindow.webContents.send('download-log', { url, text: line });
-          // Emulando progresso porque o spotDL loga de um jeito diferente
           if (line.toLowerCase().includes('downloaded')) {
             mainWindow.webContents.send('download-progress', { url, percent: 100, engine: 'spotdl' });
           } else {
@@ -158,16 +159,21 @@ async function handleDownloadRequest({
       };
 
       child.stdout.on('data', (chunk) => chunk.toString().split(/\r?\n/).forEach(handleLine));
-      child.stderr.on('data', (chunk) => chunk.toString().split(/\r?\n/).forEach(handleLine));
+      child.stderr.on('data', (chunk) => {
+        const text = chunk.toString();
+        spotErrorLog += text; // Salva o erro
+        text.split(/\r?\n/).forEach(handleLine);
+      });
 
       child.on('error', (err) => reject(new Error('spotDL não encontrado. Adicione o spotdl.exe nos plugins.')));
       child.on('close', (code) => {
         if (code === 0) resolve({ ok: true, file: outDir, engine: 'spotdl' });
-        else reject(new Error('spotDL saiu com código ' + code));
+        else reject(new Error(spotErrorLog || 'spotDL saiu com código ' + code)); // Rejeita com erro legível
       });
     });
   }
 
+  // OUTRAS PLATAFORMAS (YT-DLP)
   const ytDlp = getYtDlpPath();
   let format = 'best';
   if (type === 'video') {
@@ -200,47 +206,35 @@ async function handleDownloadRequest({
     }
   }
 
-  const args = ['--newline', '-o', outputTemplate, '-f', format];
+  const args = [
+    '--newline', 
+    '-o', outputTemplate, 
+    '-f', format,
+    '--retries', '15',             // Tenta baixar 15x se a internet cair
+    '--fragment-retries', '15',    // Mesma coisa para fragmentos do HLS
+    '--retry-sleep', '5'           // Espera 5 segundos antes de tentar de novo
+  ];
 
   if (hasFfmpeg) {
     args.push('--ffmpeg-location', ffmpegPath);
   }
 
-  if (
-    type === 'video' &&
-    !hasFfmpeg &&
-    fileType &&
-    ['mp4', 'mkv', 'webm'].includes(fileType)
-  ) {
-    throw new Error(
-      `Para salvar vídeos em ${fileType.toUpperCase()}, coloque o ffmpeg.exe na pasta de plugins.`
-    );
+  if (type === 'video' && !hasFfmpeg && fileType && ['mp4', 'mkv', 'webm'].includes(fileType)) {
+    throw new Error(`Para salvar vídeos em ${fileType.toUpperCase()}, coloque o ffmpeg.exe na pasta de plugins.`);
   }
 
   if (type === 'audio' && !hasFfmpeg && fileType && fileType !== 'mp3') {
-    throw new Error(
-      `Para converter áudios para ${fileType.toUpperCase()}, coloque o ffmpeg.exe na pasta de plugins.`
-    );
+    throw new Error(`Para converter áudios para ${fileType.toUpperCase()}, coloque o ffmpeg.exe na pasta de plugins.`);
   }
 
   if (type === 'audio') {
     args.push('--extract-audio');
+    args.push('--audio-format', (fileType && fileType !== 'auto') ? fileType : 'mp3');
 
-    if (fileType && fileType !== 'auto') {
-      args.push('--audio-format', fileType);
-    } else {
-      args.push('--audio-format', 'mp3');
-    }
-
-    if (quality === '320k') {
-      args.push('--audio-quality', '0');
-    } else if (quality === '192k') {
-      args.push('--audio-quality', '4');
-    } else if (quality === '128k') {
-      args.push('--audio-quality', '5');
-    } else {
-      args.push('--audio-quality', '0');
-    }
+    if (quality === '320k') args.push('--audio-quality', '0');
+    else if (quality === '192k') args.push('--audio-quality', '4');
+    else if (quality === '128k') args.push('--audio-quality', '5');
+    else args.push('--audio-quality', '0');
   } else if (type === 'video') {
     if (fileType && fileType !== 'auto' && hasFfmpeg) {
       args.push('--merge-output-format', fileType);
@@ -256,10 +250,7 @@ async function handleDownloadRequest({
 
   if (finalPlatform === 'tiktok') {
     args.push('--referer', 'https://www.tiktok.com/');
-    args.push(
-      '--add-header',
-      'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
-    );
+    args.push('--add-header', 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)');
     if (!args.includes('--cookies')) {
       const newTiktokCookies = cookiesDir ? path.join(cookiesDir, 'tiktok_cookies.txt') : null;
       const oldTiktokCookies = pluginsDir ? path.join(pluginsDir, 'tiktok_cookies.txt') : null;
@@ -276,7 +267,9 @@ async function handleDownloadRequest({
 
   return new Promise((resolve, reject) => {
     const child = spawn(ytDlp, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    
     let lastFile = null;
+    let errorLog = '';
 
     const handleLine = (line) => {
       if (!line.trim()) return;
@@ -296,26 +289,27 @@ async function handleDownloadRequest({
       }
 
       if (mainWindow) {
-        mainWindow.webContents.send('download-log', {
-          url,
-          text: line
-        });
+        mainWindow.webContents.send('download-log', { url, text: line });
       }
     };
 
     child.stdout.on('data', (chunk) => {
       chunk.toString().split(/\r?\n/).forEach(handleLine);
     });
+
     child.stderr.on('data', (chunk) => {
-      chunk.toString().split(/\r?\n/).forEach(handleLine);
+      const text = chunk.toString();
+      errorLog += text;
+      text.split(/\r?\n/).forEach(handleLine);
     });
 
     child.on('error', (err) => reject(err));
+    
     child.on('close', (code) => {
       if (code === 0) {
         resolve({ ok: true, file: lastFile, engine: 'yt-dlp' });
       } else {
-        reject(new Error('yt-dlp saiu com código ' + code));
+        reject(new Error(errorLog || 'yt-dlp saiu com código ' + code));
       }
     });
   });

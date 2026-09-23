@@ -38,8 +38,8 @@ window.addEventListener('DOMContentLoaded', async () => {
   const plugins = await window.electronAPI.checkPlugins();
   const warning = document.getElementById('plugin-warning');
   if (warning) {
-    if (!plugins.yt || !plugins.ff || !plugins.spot) {
-      warning.innerHTML = `⚠️ Plugins faltando! Recomendado ter yt-dlp, ffmpeg e spotdl. <button id="btn-open-plugins">Abrir pasta</button>`;
+    if (!plugins.yt || !plugins.ff) {
+      warning.innerHTML = `⚠️ Plugins faltando! yt-dlp e ffmpeg! <button id="btn-open-plugins">Abrir pasta</button>`;
       warning.classList.remove('hidden');
     }
   }
@@ -302,13 +302,42 @@ if (btnKickVodDownload) {
 }
 if (btnTiktokDownloader) {
   btnTiktokDownloader.addEventListener('click', () => {
-    window.electronAPI.openWebPopup('https://ssstik.io/pt');
+    window.electronAPI.openWebPopup('https://ssstik.io');
   });
 }
 if (btnDonate) {
   btnDonate.addEventListener('click', () => {
     window.electronAPI.openWebPopup('https://livepix.gg/jhordan');
   });
+}
+
+// Erros
+function getClearErrorMessage(errorText) {
+  const err = errorText.toLowerCase();
+  
+  if (err.includes('sign in to confirm you’re not a bot') || err.includes('requires authentication')) {
+    return 'O site exigiu login. Vá nas Configurações, abra a pasta de Cookies e adicione um arquivo "cookies.txt" válido do seu navegador.';
+  }
+  if (err.includes('video unavailable') || err.includes('is not available')) {
+    return 'Este vídeo não está disponível, foi excluído ou está privado.';
+  }
+  if (err.includes('ffmpeg') || err.includes('ffprobe')) {
+    return 'Falta o plugin FFmpeg. Ele é obrigatório para juntar áudio e vídeo em alta qualidade ou fazer conversões. Baixe e coloque na pasta de plugins.';
+  }
+  if (err.includes('unsupported url') || err.includes('no video formats')) {
+    return 'O link fornecido não é suportado pelo Filekit ou não contém um vídeo válido.';
+  }
+  if (err.includes('saiu com o código') || err.includes('exit code 1')) {
+    return `O plugin de download encontrou um erro inesperado e falhou.\nDetalhe técnico: ${errorText}`;
+  }
+  if (err.includes('maxbuffer') || err.includes('buffer')) {
+    return 'O arquivo é muito grande e excedeu o limite de memória do aplicativo. (Erro de MaxBuffer).';
+  }
+  if (err.includes('timeout')) {
+    return 'O download demorou muito e o tempo limite foi atingido. Tente novamente com uma internet mais estável.';
+  }
+
+  return errorText;
 }
 
 // ERRO (MODAL)
@@ -320,12 +349,17 @@ function showErrorModal(title, message, showPluginsButton = false) {
 
   if (!modal) return;
 
+  const clearMessage = getClearErrorMessage(message);
+
   if (titleEl) titleEl.textContent = title;
-  if (msgEl) msgEl.textContent = message;
+  if (msgEl) msgEl.textContent = clearMessage;
 
   if (btnPlugins) {
-    if (showPluginsButton) btnPlugins.classList.remove('hidden');
-    else btnPlugins.classList.add('hidden');
+    if (showPluginsButton || clearMessage.includes('FFmpeg')) {
+        btnPlugins.classList.remove('hidden');
+    } else {
+        btnPlugins.classList.add('hidden');
+    }
   }
 
   modal.classList.remove('hidden');

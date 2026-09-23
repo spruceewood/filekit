@@ -18,7 +18,7 @@ function createUpdaterWindow() {
   updaterWindow = new BrowserWindow({
     width: 320,
     height: 400,
-    frame: false, // Remove as bordas da janela
+    frame: false,
     transparent: true,
     backgroundColor: '#0f0f10',
     icon: path.join(__dirname, 'assets/filekit.png'),
@@ -99,22 +99,33 @@ app.whenReady().then(() => {
 
   createUpdaterWindow();
 
+  // ! ATENÇÃO: DESCOMENTAR APENAS PARA DESENVOLVIMENTO LOCAL (! TESTE): 
+  // Comente "createUpdaterWindow();" e descomente "createWindow();" p/
+  // você usar o aplicativo sem problemas, com o updater descomentado o
+  // app não inicia no pc local. [Doe: https://livepix.gg/jhordan] 
+
+  //createWindow();
+
   autoUpdater.autoDownload = true;
   
-  updaterWindow.once('ready-to-show', () => {
-      autoUpdater.checkForUpdates();
-  });
+  if (mainWindow) {
+    mainWindow.once('ready-to-show', () => {
+        autoUpdater.checkForUpdatesAndNotify().catch(err => {
+            console.error("Erro ao checar atualizações:", err);
+        });
+    });
+  }
 
   autoUpdater.on('update-available', (info) => {
-    if (updaterWindow) updaterWindow.webContents.send('updater-status', { state: 'available', info });
+    if (mainWindow) mainWindow.webContents.send('updater-status', { state: 'available', info });
   });
 
   autoUpdater.on('download-progress', (progress) => {
-    if (updaterWindow) updaterWindow.webContents.send('updater-status', { state: 'downloading', progress });
+    if (mainWindow) mainWindow.webContents.send('updater-status', { state: 'downloading', progress });
   });
 
   autoUpdater.on('update-downloaded', (info) => {
-    if (updaterWindow) updaterWindow.webContents.send('updater-status', { state: 'downloaded', info });
+    if (mainWindow) mainWindow.webContents.send('updater-status', { state: 'downloaded', info });
   });
 
   autoUpdater.on('update-not-available', () => {
