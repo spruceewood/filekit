@@ -106,44 +106,54 @@ app.whenReady().then(() => {
 
   //createWindow();
 
-  autoUpdater.autoDownload = true;
-  
-  if (mainWindow) {
-    mainWindow.once('ready-to-show', () => {
+  // Checar atualizações
+  if (updaterWindow) {
+    updaterWindow.once('ready-to-show', () => {
         autoUpdater.checkForUpdatesAndNotify().catch(err => {
             console.error("Erro ao checar atualizações:", err);
         });
     });
   }
 
+  // Status
   autoUpdater.on('update-available', (info) => {
-    if (mainWindow) mainWindow.webContents.send('updater-status', { state: 'available', info });
+    if (updaterWindow) updaterWindow.webContents.send('updater-status', { state: 'available', info });
   });
 
   autoUpdater.on('download-progress', (progress) => {
-    if (mainWindow) mainWindow.webContents.send('updater-status', { state: 'downloading', progress });
+    if (updaterWindow) updaterWindow.webContents.send('updater-status', { state: 'downloading', progress });
   });
 
   autoUpdater.on('update-downloaded', (info) => {
-    if (mainWindow) mainWindow.webContents.send('updater-status', { state: 'downloaded', info });
+    if (updaterWindow) updaterWindow.webContents.send('updater-status', { state: 'downloaded', info });
   });
 
   autoUpdater.on('update-not-available', () => {
-    updaterWindow.close();
+    if (updaterWindow && !updaterWindow.isDestroyed()) {
+        updaterWindow.close();
+    }
+
     createWindow();
-    createTray();
   });
 
+  // Caso der erro
   autoUpdater.on('error', (err) => {
     console.error("Update error: ", err);
-    updaterWindow.webContents.send('updater-status', { state: 'error', error: err.message });
-    setTimeout(() => {
-      if(!updaterWindow.isDestroyed()) updaterWindow.close();
-      if (!mainWindow) {
-        createWindow();
-        createTray();
-      }
-    }, 2000);
+    if (updaterWindow && !updaterWindow.isDestroyed()) {
+        updaterWindow.webContents.send('updater-status', { state: 'error', error: err.message });
+        setTimeout(() => {
+          if (!updaterWindow.isDestroyed()) updaterWindow.close();
+          if (!mainWindow) {
+            createWindow();
+            createTray();
+          }
+        }, 2000);
+    } else {
+        if (!mainWindow) {
+          createWindow();
+          createTray();
+        }
+    }
   });
 
   app.on('activate', () => {
